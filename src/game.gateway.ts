@@ -9,6 +9,8 @@ import {
 import { Server, Socket } from 'socket.io';
 import { GameService } from './game.service';
 
+interface CreateGameDto { roomId: string; profile: { name: string; avatar: string | null } }
+
 @WebSocketGateway({
     cors: {
         origin: process.env.CORS_ORIGINS
@@ -24,26 +26,36 @@ export class GameGateway implements OnGatewayDisconnect {
     constructor(private readonly gameService: GameService) { }
 
     @SubscribeMessage('create_game')
-    handleCreate(@MessageBody() roomId: string, @ConnectedSocket() client: Socket) {
-        const res = this.gameService.createGame(roomId, client.id);
+    handleCreate(@MessageBody() data: CreateGameDto, @ConnectedSocket() client: Socket) {
+        const res = this.gameService.createGame(data.roomId, client.id, data.profile);
         if (res.error) {
             client.emit('error', res.error);
         } else {
-            client.join(roomId);
+            client.join(data.roomId);
             client.emit('created', { symbol: res.symbol });
         }
     }
 
     @SubscribeMessage('join_game')
-    handleJoin(@MessageBody() roomId: string, @ConnectedSocket() client: Socket) {
-        const res = this.gameService.joinGame(roomId, client.id);
+    handleJoin(@MessageBody() data: CreateGameDto, @ConnectedSocket() client: Socket) {
+        const res = this.gameService.joinGame(data.roomId, client.id, data.profile);
         if (res.error) {
             client.emit('error', res.error);
         } else {
-            client.join(roomId);
-            client.emit('joined', { symbol: res.symbol });
-            // Сообщаем всем в комнате, что игра началась
-            this.server.to(roomId).emit('game_start', { turn: 'X' });
+            client.join(data.roomId);
+
+            // 1. Отправляем вошедшему его символ И профиль соперника (который уже был в комнате)
+            client.emit('joined', {
+                symbol: res.symbol,
+                opponentProfile: res.opponentProfile
+            });
+
+            // 2. Отправляем создателю (первому игроку), что соперник зашел + его профиль
+            client.to(data.roomId).emit('opponent_joined', {
+                profile: data.profile
+            });
+
+            this.server.to(data.roomId).emit('game_start', { turn: 'X' });
         }
     }
 

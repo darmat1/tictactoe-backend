@@ -3,8 +3,14 @@ import { Injectable } from '@nestjs/common';
 interface GameState {
     players: string[]; // ID сокетов двух игроков
     board: (string | null)[]; // Массив из 9 клеток
+    profiles: Map<string, PlayerProfile>;
     turn: 'X' | 'O'; // Чей сейчас ход
     rematchVotes: string[];
+}
+
+export interface PlayerProfile {
+    name: string;
+    avatar: string | null; // null если нет аватарки
 }
 
 @Injectable()
@@ -12,12 +18,15 @@ export class GameService {
     // Храним игры в памяти сервера (Map: RoomID -> GameState)
     private games = new Map<string, GameState>();
 
-    createGame(roomId: string, playerId: string) {
-        if (this.games.has(roomId)) {
-            return { error: 'Комната уже занята!' };
-        }
+    createGame(roomId: string, playerId: string, profile: PlayerProfile) {
+        if (this.games.has(roomId)) return { error: 'Комната занята!' };
+
+        const profiles = new Map<string, PlayerProfile>();
+        profiles.set(playerId, profile);
+
         this.games.set(roomId, {
             players: [playerId],
+            profiles: profiles, // Сохраняем
             board: Array(9).fill(null),
             turn: 'X',
             rematchVotes: []
@@ -25,13 +34,26 @@ export class GameService {
         return { symbol: 'X' };
     }
 
-    joinGame(roomId: string, playerId: string) {
+    joinGame(roomId: string, playerId: string, profile: PlayerProfile) {
         const game = this.games.get(roomId);
         if (!game) return { error: 'Комната не найдена' };
         if (game.players.length >= 2) return { error: 'Комната полна' };
 
         game.players.push(playerId);
-        return { symbol: 'O' };
+        game.profiles.set(playerId, profile); // Сохраняем второго
+
+        // Находим профиль соперника, чтобы вернуть его тому, кто вошел
+        const opponentId = game.players.find(id => id !== playerId);
+        const opponentProfile = game.profiles.get(opponentId!);
+
+        return { symbol: 'O', opponentProfile };
+    }
+
+    getOpponentProfile(roomId: string, myPlayerId: string) {
+        const game = this.games.get(roomId);
+        if (!game) return null;
+        const opponentId = game.players.find(id => id !== myPlayerId);
+        return opponentId ? game.profiles.get(opponentId) : null;
     }
 
     makeMove(roomId: string, playerId: string, index: number, symbol: 'X' | 'O') {
