@@ -4,6 +4,7 @@ interface GameState {
     players: string[]; // ID сокетов двух игроков
     board: (string | null)[]; // Массив из 9 клеток
     turn: 'X' | 'O'; // Чей сейчас ход
+    rematchVotes: string[];
 }
 
 @Injectable()
@@ -19,6 +20,7 @@ export class GameService {
             players: [playerId],
             board: Array(9).fill(null),
             turn: 'X',
+            rematchVotes: []
         });
         return { symbol: 'X' };
     }
@@ -60,6 +62,38 @@ export class GameService {
         }
 
         return { board: game.board, turn: game.turn };
+    }
+
+    // Логика выхода игрока
+    leaveGame(roomId: string, playerId: string) {
+        const game = this.games.get(roomId);
+        if (game) {
+            // Удаляем комнату, так как игры 1 на 1
+            this.games.delete(roomId);
+            return { success: true, remainingPlayer: game.players.find(p => p !== playerId) };
+        }
+        return { success: false };
+    }
+
+    // Логика запроса реванша
+    voteForRematch(roomId: string, playerId: string) {
+        const game = this.games.get(roomId);
+        if (!game) return { error: 'Игра не найдена' };
+
+        // Если этот игрок еще не голосовал — добавляем
+        if (!game.rematchVotes.includes(playerId)) {
+            game.rematchVotes.push(playerId);
+        }
+
+        // Если проголосовали оба (2 голоса) — рестарт
+        if (game.rematchVotes.length === 2) {
+            game.board = Array(9).fill(null);
+            game.turn = 'X';
+            game.rematchVotes = []; // Сбрасываем голоса
+            return { restarted: true, board: game.board, turn: game.turn };
+        }
+
+        return { restarted: false };
     }
 
     // Удаление игрока при разрыве соединения

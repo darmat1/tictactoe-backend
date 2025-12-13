@@ -70,6 +70,35 @@ export class GameGateway implements OnGatewayDisconnect {
         }
     }
 
+    @SubscribeMessage('leave_game')
+    handleLeave(@MessageBody() roomId: string, @ConnectedSocket() client: Socket) {
+        const res = this.gameService.leaveGame(roomId, client.id);
+        client.leave(roomId); // Убираем сокет из комнаты
+
+        if (res.success && res.remainingPlayer) {
+            // Сообщаем оставшемуся, что соперник сбежал
+            this.server.to(roomId).emit('opponent_left');
+        }
+    }
+
+    @SubscribeMessage('request_rematch')
+    handleRematch(@MessageBody() roomId: string, @ConnectedSocket() client: Socket) {
+        const res = this.gameService.voteForRematch(roomId, client.id);
+
+        if (res.error) return;
+
+        if (res.restarted) {
+            // Если оба согласились — рестарт
+            this.server.to(roomId).emit('game_restarted', {
+                board: res.board,
+                turn: res.turn
+            });
+        } else {
+            // Если только один нажал — сообщаем другому
+            client.to(roomId).emit('opponent_wants_rematch');
+        }
+    }
+
     handleDisconnect(client: Socket) {
         this.gameService.removePlayer(client.id);
     }
