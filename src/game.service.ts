@@ -53,7 +53,6 @@ export class GameService {
 
         // Если есть победитель ИЛИ ничья (нет победителя и нет пустых клеток)
         if (winResult || !game.board.includes(null)) {
-            this.games.delete(roomId);
             return {
                 board: game.board,
                 winner: winResult ? winResult.winner : 'Draw',
