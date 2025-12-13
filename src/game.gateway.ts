@@ -72,13 +72,14 @@ export class GameGateway implements OnGatewayDisconnect {
 
     @SubscribeMessage('leave_game')
     handleLeave(@MessageBody() roomId: string, @ConnectedSocket() client: Socket) {
-        const res = this.gameService.leaveGame(roomId, client.id);
-        client.leave(roomId); // Убираем сокет из комнаты
+        // 1. Сначала сообщаем сопернику, что мы уходим (используем client.to)
+        client.to(roomId).emit('opponent_left');
 
-        if (res.success && res.remainingPlayer) {
-            // Сообщаем оставшемуся, что соперник сбежал
-            this.server.to(roomId).emit('opponent_left');
-        }
+        // 2. Убираем себя из комнаты сокетов
+        client.leave(roomId);
+
+        // 3. Удаляем игру из памяти сервиса
+        this.gameService.leaveGame(roomId, client.id);
     }
 
     @SubscribeMessage('request_rematch')
@@ -88,13 +89,13 @@ export class GameGateway implements OnGatewayDisconnect {
         if (res.error) return;
 
         if (res.restarted) {
-            // Если оба согласились — рестарт
+            // Если оба согласны — сообщаем ВСЕМ (server.to)
             this.server.to(roomId).emit('game_restarted', {
                 board: res.board,
                 turn: res.turn
             });
         } else {
-            // Если только один нажал — сообщаем другому
+            // Если только один нажал — сообщаем ТОЛЬКО СОПЕРНИКУ (client.to)
             client.to(roomId).emit('opponent_wants_rematch');
         }
     }
