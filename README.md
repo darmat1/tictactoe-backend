@@ -38,13 +38,30 @@ Powered by **NestJS** and **Socket.io**.
 
 ## 🔌 WebSocket Events
 
-| Event Name    | Direction | Payload | Description |
-|:-------------|:---------:|:--------|:------------|
-| `create_game`| Client -> Server | `roomId` (string) | Creates a new game lobby. |
-| `join_game`  | Client -> Server | `roomId` (string) | Joins an existing lobby. |
-| `make_move`  | Client -> Server | `{ roomId, index, symbol }` | Validates and processes a player's move. |
-| `update_board`| Server -> Client | `{ board, turn }` | Broadcasts new board state to players. |
-| `game_over`  | Server -> Client | `{ winner, winLine }` | Announces winner and winning coordinates. |
+### Client -> Server (Actions)
+
+| Event Name | Payload (JSON) | Description |
+|:---|:---|:---|
+| `create_game` | `{ roomId: string, profile: { name, avatar } }` | Creates a new lobby and stores the host's profile. |
+| `join_game` | `{ roomId: string, profile: { name, avatar } }` | Joins an existing lobby and notifies the host. |
+| `make_move` | `{ roomId: string, index: number, symbol: 'X' \| 'O' }` | Sends a move. Server validates turn and cell availability. |
+| `request_rematch` | `roomId` (string) | Player votes for a rematch. Requires 2 votes to trigger restart. |
+| `leave_game` | `roomId` (string) | Player explicitly leaves the room (clicks "Exit"). |
+
+### Server -> Client (Updates)
+
+| Event Name | Payload (JSON) | Description |
+|:---|:---|:---|
+| `created` | `{ symbol: 'X' }` | Sent to the host confirming room creation. |
+| `joined` | `{ symbol: 'O', opponentProfile }` | Sent to the joiner. Contains host's profile data. |
+| `opponent_joined` | `{ profile }` | Sent to the host. Contains joiner's profile data. |
+| `game_start` | `{ turn: 'X' }` | Broadcasted when both players are ready. |
+| `update_board` | `{ board: string[], turn: 'X' \| 'O' }` | Broadcasted after a valid move. |
+| `game_over` | `{ winner: 'X' \| 'O' \| 'Draw', winLine: number[] }` | Sent when the game ends. Includes winning coordinates for UI line. |
+| `opponent_wants_rematch`| `null` | Sent to the opponent if only one player clicked "Play Again". |
+| `game_restarted` | `{ board, turn }` | Sent to both players when the rematch is confirmed. |
+| `opponent_left` | `null` | Sent if the opponent leaves or disconnects. |
+| `error` | `string` | Error message (e.g., "Room is full", "Not your turn"). |
 
 ## 🧩 Project Structure
 
