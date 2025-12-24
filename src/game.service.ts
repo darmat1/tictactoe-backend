@@ -1,159 +1,168 @@
 import { Injectable } from '@nestjs/common';
+import { MESSAGES } from './constants/messages';
 
 export interface PlayerProfile {
-    name: string;
-    avatar: string | null;
+  id: string;
+  name: string;
+  avatar: string | null;
 }
 
 interface GameState {
-    roomId: string;
-    playerX: string;
-    playerO?: string; // Опционально
-    profiles: Map<string, PlayerProfile>;
-    board: (string | null)[];
-    turn: 'X' | 'O';
-    rematchVotes: string[];
+  roomId: string;
+  playerX: string;
+  playerO?: string; // Опционально
+  profiles: Map<string, PlayerProfile>;
+  board: (string | null)[];
+  turn: 'X' | 'O';
+  rematchVotes: string[];
 }
 
 @Injectable()
 export class GameService {
-    // Убрали Partial, теперь карта строго типизирована
-    private games = new Map<string, GameState>();
+  // Убрали Partial, теперь карта строго типизирована
+  private games = new Map<string, GameState>();
 
-    createGame(roomId: string, playerId: string, profile: PlayerProfile) {
-        if (this.games.has(roomId)) {
-            return { error: 'Комната занята!' };
-        }
-
-        const profiles = new Map<string, PlayerProfile>();
-        profiles.set(playerId, profile);
-
-        this.games.set(roomId, {
-            roomId,
-            playerX: playerId,
-            // playerO пока нет
-            profiles: profiles,
-            board: Array(9).fill(null),
-            turn: 'X',
-            rematchVotes: [],
-        });
-
-        return { success: true };
+  createGame(roomId: string, playerId: string, profile: PlayerProfile) {
+    if (this.games.has(roomId)) {
+      return { error: MESSAGES.ROOM_OCCUPIED };
     }
 
-    joinGame(roomId: string, playerId: string, profile: PlayerProfile) {
-        const game = this.games.get(roomId);
-        if (!game) return { error: 'Комната не найдена' };
-        if (game.profiles.size >= 2) return { error: 'Комната полна' };
+    const profiles = new Map<string, PlayerProfile>();
+    profiles.set(playerId, profile);
 
-        // Сохраняем второго
-        game.profiles.set(playerId, profile);
-        const firstPlayerId = game.playerX;
+    this.games.set(roomId, {
+      roomId,
+      playerX: playerId,
+      // playerO пока нет
+      profiles: profiles,
+      board: Array(9).fill(null) as (string | null)[],
+      turn: 'X',
+      rematchVotes: [],
+    });
 
-        // Рандом
-        let xId: string, oId: string;
-        if (Math.random() > 0.5) {
-            xId = firstPlayerId;
-            oId = playerId;
-        } else {
-            xId = playerId;
-            oId = firstPlayerId;
-        }
+    return { success: true };
+  }
 
-        game.playerX = xId;
-        game.playerO = oId;
+  joinGame(roomId: string, playerId: string, profile: PlayerProfile) {
+    const game = this.games.get(roomId);
+    if (!game) return { error: MESSAGES.ROOM_NOT_FOUND };
+    if (game.profiles.size >= 2) return { error: MESSAGES.ROOM_FULL };
 
-        // Используем "!", так как мы только что положили туда данные
-        return {
-            success: true,
-            xPlayerId: xId,
-            oPlayerId: oId,
-            xProfile: game.profiles.get(xId)!,
-            oProfile: game.profiles.get(oId)!,
-        };
+    // Сохраняем второго
+    game.profiles.set(playerId, profile);
+    const firstPlayerId = game.playerX;
+
+    // Рандом
+    let xId: string, oId: string;
+    if (Math.random() > 0.5) {
+      xId = firstPlayerId;
+      oId = playerId;
+    } else {
+      xId = playerId;
+      oId = firstPlayerId;
     }
 
-    makeMove(roomId: string, playerId: string, index: number, symbol: 'X' | 'O') {
-        const game = this.games.get(roomId);
-        if (!game) return { error: 'Игра не найдена' };
+    game.playerX = xId;
+    game.playerO = oId;
 
-        if (game.turn !== symbol) return { error: 'Сейчас не твой ход' };
-        if (game.board[index] !== null) return { error: 'Клетка занята' };
+    // Используем "!", так как мы только что положили туда данные
+    return {
+      success: true,
+      xPlayerId: xId,
+      oPlayerId: oId,
+      xProfile: game.profiles.get(xId)!,
+      oProfile: game.profiles.get(oId)!,
+    };
+  }
 
-        if (symbol === 'X' && game.playerX !== playerId) return { error: 'Вы не играете за X!' };
-        if (symbol === 'O' && game.playerO !== playerId) return { error: 'Вы не играете за O!' };
+  makeMove(roomId: string, playerId: string, index: number, symbol: 'X' | 'O') {
+    const game = this.games.get(roomId);
+    if (!game) return { error: MESSAGES.GAME_NOT_FOUND };
 
-        game.board[index] = symbol;
+    if (game.turn !== symbol) return { error: MESSAGES.NOT_YOUR_TURN };
+    if (game.board[index] !== null) return { error: MESSAGES.CELL_OCCUPIED };
 
-        const winResult = this.checkWinner(game.board);
+    if (symbol === 'X' && game.playerX !== playerId)
+      return { error: MESSAGES.NOT_PLAYING_AS_X };
+    if (symbol === 'O' && game.playerO !== playerId)
+      return { error: MESSAGES.NOT_PLAYING_AS_O };
 
-        if (winResult) {
-            return {
-                board: game.board,
-                turn: null,
-                winner: winResult.winner,
-                winLine: winResult.line,
-            };
-        } else if (!game.board.includes(null)) {
-            return { board: game.board, turn: null, winner: 'Draw' };
-        }
+    game.board[index] = symbol;
 
-        game.turn = symbol === 'X' ? 'O' : 'X';
-        return { board: game.board, turn: game.turn };
+    const winResult = this.checkWinner(game.board);
+
+    if (winResult) {
+      return {
+        board: game.board,
+        turn: null,
+        winner: winResult.winner,
+        winLine: winResult.line,
+      };
+    } else if (!game.board.includes(null)) {
+      return { board: game.board, turn: null, winner: 'Draw' };
     }
 
-    voteForRematch(roomId: string, playerId: string) {
-        const game = this.games.get(roomId);
-        if (!game) return { error: 'Игра не найдена' };
+    game.turn = symbol === 'X' ? 'O' : 'X';
+    return { board: game.board, turn: game.turn };
+  }
 
-        if (!game.rematchVotes.includes(playerId)) {
-            game.rematchVotes.push(playerId);
-        }
+  voteForRematch(roomId: string, playerId: string) {
+    const game = this.games.get(roomId);
+    if (!game) return { error: MESSAGES.GAME_NOT_FOUND };
 
-        if (game.rematchVotes.length === 2 && game.playerO) {
-            const oldX = game.playerX;
-            const oldO = game.playerO;
-
-            // Смена сторон
-            game.playerX = oldO;
-            game.playerO = oldX;
-
-            game.board = Array(9).fill(null);
-            game.turn = 'X';
-            game.rematchVotes = [];
-
-            return {
-                restarted: true,
-                board: game.board,
-                turn: 'X',
-                newXId: game.playerX,
-                newOId: game.playerO,
-            };
-        }
-        return { restarted: false };
+    if (!game.rematchVotes.includes(playerId)) {
+      game.rematchVotes.push(playerId);
     }
 
-    leaveGame(playerId: string) {
-        for (const [id, game] of this.games.entries()) {
-            if (game.playerX === playerId || game.playerO === playerId) {
-                this.games.delete(id);
-                return { roomId: id };
-            }
-        }
-        return null;
-    }
+    if (game.rematchVotes.length === 2 && game.playerO) {
+      const oldX = game.playerX;
+      const oldO = game.playerO;
 
-    private checkWinner(board: (string | null)[]) {
-        const lines = [
-            [0, 1, 2], [3, 4, 5], [6, 7, 8],
-            [0, 3, 6], [1, 4, 7], [2, 5, 8],
-            [0, 4, 8], [2, 4, 6]
-        ];
-        for (const [a, b, c] of lines) {
-            if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-                return { winner: board[a], line: [a, b, c] };
-            }
-        }
-        return null;
+      // Смена сторон
+      game.playerX = oldO;
+      game.playerO = oldX;
+
+      game.board = Array(9).fill(null) as (string | null)[];
+      game.turn = 'X';
+      game.rematchVotes = [];
+
+      return {
+        restarted: true,
+        board: game.board,
+        turn: 'X',
+        newXId: game.playerX,
+        newOId: game.playerO,
+      };
     }
+    return { restarted: false };
+  }
+
+  leaveGame(playerId: string) {
+    for (const [id, game] of this.games.entries()) {
+      if (game.playerX === playerId || game.playerO === playerId) {
+        this.games.delete(id);
+        return { roomId: id };
+      }
+    }
+    return null;
+  }
+
+  private checkWinner(board: (string | null)[]) {
+    const lines = [
+      [0, 1, 2],
+      [3, 4, 5],
+      [6, 7, 8],
+      [0, 3, 6],
+      [1, 4, 7],
+      [2, 5, 8],
+      [0, 4, 8],
+      [2, 4, 6],
+    ];
+    for (const [a, b, c] of lines) {
+      if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+        return { winner: board[a], line: [a, b, c] };
+      }
+    }
+    return null;
+  }
 }
